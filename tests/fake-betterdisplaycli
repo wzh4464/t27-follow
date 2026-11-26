@@ -1,0 +1,70 @@
+#!/bin/bash
+# 测试用的假 betterdisplaycli：按 $FAKE_DIR 里的状态文件模拟 BetterDisplay 加显示器。
+# 行为照 2026-11-26 在真机（BetterDisplay 4.0.4）上实测到的写：
+#   成功 rc=0；失败输出 "Failed." 且 rc=1；set 成功时不输出任何内容。
+# 只认 t27-follow 应该发出的那几种命令，其余一律记入 unexpected 并失败。
+#
+# 状态文件：
+#   readings    每行一个读数，按顺序被「读输入源」消费：
+#                 数字        正常读到该输入源编号
+#                 Failed      这次读取失败
+#                 hang        这次读取卡住不返回
+#                 unplugged   这次读取失败，并且镜像被系统取消（模拟掉线后重新出现）
+#               读完之后的每次读取都失败，并把 extra 加一（测试据此知道脚本已读完）
+#   mirror      T27h-30 当前是否处于镜像：on / off
+#   mirror_src  当前镜像源的 tagID
+#   main_tag    主屏的 tagID；t27_tag  T27h-30 的 tagID
+#   set_fails   存在时，所有 set 命令失败
+#   set_noop    存在时，「开镜像」返回成功但实际不生效
+#   stamp       存在时，把每次「读输入源」的时刻记进 read_times
+#   calls       每次调用的参数，一行一条
+set -u
+D="${FAKE_DIR:?需要 FAKE_DIR}"
+args="$*"
+printf '%s\n' "$args" >> "$D/calls"
+
+fail() { echo "Failed."; exit 1; }
+
+case "$args" in
+  "get -name=T27h-30 -ddc -vcp=inputSelect")
+    # stamp 存在时，记下每次读取发生的时刻（秒，带毫秒），供测试检查轮询快慢
+    [ -e "$D/stamp" ] && /usr/bin/perl -MTime::HiRes=time -e 'printf "%.3f\n", time' >> "$D/read_times"
+    pos=$(cat "$D/pos")
+    total=$(wc -l < "$D/readings" | tr -d ' ')
+    if [ "$pos" -ge "$total" ]; then
+      echo $(( $(cat "$D/extra") + 1 )) > "$D/extra"
+      fail
+    fi
+    r=$(sed -n "$((pos + 1))p" "$D/readings")
+    echo $((pos + 1)) > "$D/pos"
+    case "$r" in
+      Failed)    fail ;;
+      hang)      exec sleep 30 ;;
+      unplugged) echo off > "$D/mirror"; fail ;;
+      *)         echo "$r"; exit 0 ;;
+    esac
+    ;;
+  "get -name=T27h-30 -mirror")
+    cat "$D/mirror"; exit 0 ;;
+  "get -name=T27h-30 -identifier=tagID")
+    cat "$D/t27_tag"; exit 0 ;;
+  "get -displayWithMainStatus -identifier=tagID")
+    # 真机上这个选择器会连显示器组一起返回，例如 "22,-1001"
+    echo "$(cat "$D/main_tag"),-1001"; exit 0 ;;
+  "set -tagID="*" -mirror=on -targetName=T27h-30")
+    [ -e "$D/set_fails" ] && fail
+    [ -e "$D/set_noop" ] && exit 0
+    src=${args#set -tagID=}; src=${src%% *}
+    echo on > "$D/mirror"; echo "$src" > "$D/mirror_src"
+    exit 0 ;;
+  "set -tagID="*" -mirror=off")
+    [ -e "$D/set_fails" ] && fail
+    src=${args#set -tagID=}; src=${src%% *}
+    # 只有对着当前镜像源关，才算关掉
+    [ "$src" = "$(cat "$D/mirror_src" 2>/dev/null)" ] || fail
+    echo off > "$D/mirror"
+    exit 0 ;;
+  *)
+    printf '%s\n' "$args" >> "$D/unexpected"
+    fail ;;
+esac

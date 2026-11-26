@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.zihan.t27-follow</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>__SCRIPT__</string>
+    <string>run</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>T27_NAME</key>
+    <string>__NAME__</string>
+    <key>T27_HOME_INPUT</key>
+    <string>__HOME_INPUT__</string>
+    <key>T27_INTERVAL</key>
+    <string>__INTERVAL__</string>
+    <key>T27_DIR</key>
+    <string>__LOG_DIR__</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>__LOG_DIR__/launchd.out</string>
+  <key>StandardErrorPath</key>
+  <string>__LOG_DIR__/launchd.err</string>
+</dict>
+</plist>
